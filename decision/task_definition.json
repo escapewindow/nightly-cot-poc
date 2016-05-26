@@ -1,0 +1,73 @@
+{
+  "provisionerId": "aws-provisioner-v1",
+  "workerType": "gecko-decision",
+  "schedulerId": "task-graph-scheduler",
+  "taskGroupId": "E2mfFUmbQvquEoMlc8rvsA",
+  "dependencies": [
+    "S_TGzDg0SvSsPywR886aGw"
+  ],
+  "requires": "all-completed",
+  "routes": [
+    "index.gecko.v2.mozilla-central.latest.firefox.decision",
+    "tc-treeherder.mozilla-central.2b39b72c8ea987dc5599716e231e1f3c856aa4d0",
+    "tc-treeherder-stage.mozilla-central.2b39b72c8ea987dc5599716e231e1f3c856aa4d0"
+  ],
+  "priority": "normal",
+  "retries": 5,
+  "created": "2016-05-25T13:06:31.832Z",
+  "deadline": "2016-05-26T13:06:31.832Z",
+  "expires": "2016-06-08T13:06:31.832Z",
+  "scopes": [
+    "docker-worker:cache:level-3-*",
+    "docker-worker:cache:tooltool-cache",
+    "secrets:get:project/taskcluster/gecko/hgfingerprint",
+    "scheduler:extend-task-graph:*",
+    "assume:repo:hg.mozilla.org/mozilla-central:*",
+    "assume:repo:hg.mozilla.org/try:*"
+  ],
+  "payload": {
+    "env": {
+      "GECKO_BASE_REPOSITORY": "https://hg.mozilla.org/mozilla-central",
+      "GECKO_HEAD_REPOSITORY": "https://hg.mozilla.org/mozilla-central/",
+      "GECKO_HEAD_REF": "d6d4e8417d2fd71fdf47c319b7a217f6ace9d5a5",
+      "GECKO_HEAD_REV": "d6d4e8417d2fd71fdf47c319b7a217f6ace9d5a5"
+    },
+    "cache": {
+      "level-3-mozilla-central-tc-vcs-public-sources": "/home/worker/.tc-vcs/",
+      "level-3-mozilla-central-gecko-decision": "/home/worker/workspace"
+    },
+    "features": {
+      "taskclusterProxy": true
+    },
+    "image": "taskcluster/decision:0.1.0",
+    "maxRunTime": 1800,
+    "command": [
+      "/bin/bash",
+      "-cx",
+      "mkdir -p /home/worker/artifacts && checkout-gecko workspace && cd workspace/gecko && ln -s /home/worker/artifacts artifacts && ./mach taskgraph decision --pushlog-id='30285' --project='mozilla-central' --message=' ' --owner='cbook@mozilla.com' --level='3' --base-repository='https://hg.mozilla.org/mozilla-central' --head-repository='https://hg.mozilla.org/mozilla-central/' --head-ref='d6d4e8417d2fd71fdf47c319b7a217f6ace9d5a5' --head-rev='d6d4e8417d2fd71fdf47c319b7a217f6ace9d5a5' --revision-hash='2b39b72c8ea987dc5599716e231e1f3c856aa4d0'\n"
+    ],
+    "artifacts": {
+      "public": {
+        "type": "directory",
+        "path": "/home/worker/artifacts",
+        "expires": "2016-06-01T13:06:31.833Z"
+      }
+    }
+  },
+  "metadata": {
+    "owner": "mozilla-taskcluster-maintenance@mozilla.com",
+    "source": "https://hg.mozilla.org/mozilla-central/raw-file/d6d4e8417d2fd71fdf47c319b7a217f6ace9d5a5/.taskcluster.yml",
+    "name": "Gecko Decision Task",
+    "description": "The task that creates all of the other tasks in the task graph\n"
+  },
+  "tags": {
+    "createdForUser": "cbook@mozilla.com"
+  },
+  "extra": {
+    "treeherder": {
+      "symbol": "D",
+      "revision": "d6d4e8417d2fd71fdf47c319b7a217f6ace9d5a5",
+      "revision_hash": "2b39b72c8ea987dc5599716e231e1f3c856aa4d0"
+    }
+  }
+}
