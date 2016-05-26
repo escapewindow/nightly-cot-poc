@@ -1,0 +1,9 @@
+task inspector: https://tools.taskcluster.net/task-inspector/#DgnGMqNVTM2gwZN6rVvwhA
+task definition: https://queue.taskcluster.net/v1/task/DgnGMqNVTM2gwZN6rVvwhA
+taskId DgnGMqNVTM2gwZN6rVvwhA
+runId 0
+taskGroupId F5btwMSjSHOUwnAnd-Yxvw
+schedulerId task-graph-scheduler
+workerType dbg-linux64
+provisionerId aws-provisioner-v1
+source: https://hg.mozilla.org/mozilla-central/file/d6d4e8417d2fd71fdf47c319b7a217f6ace9d5a5/testing/taskcluster/tasks/builds/dbg_linux64.yml  (metadata/source)
