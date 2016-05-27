@@ -2,7 +2,6 @@
 
 import asyncio
 from asyncio.subprocess import PIPE
-import hashlib
 import json
 import os
 import pgpy
@@ -45,13 +44,12 @@ async def get_output(cmd, path):
 
 async def get_file_shas(job_dir):
     file_list = await get_output(['find', '.', '-type', 'f'], job_dir)
-    pprint.pprint(file_list)
     shas = {}
     futures = {}
     for f in file_list:
         path = f.replace('./', '')
+        # use get_output() instead of hashlib because async
         futures[f] = asyncio.ensure_future(get_output(['openssl', 'sha256', f], job_dir))
-    pprint.pprint(futures)
     await asyncio.wait(futures.values())
     for k, v in futures.items():
         parts = v.result()[0].split('= ')
