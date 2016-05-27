@@ -10,13 +10,7 @@ import pprint
 BASEDIR = os.path.abspath(os.path.dirname(__file__))
 
 
-def get_keyring():
-    return pgpy.PGPKeyring(
-        os.path.join(BASEDIR, 'gpg', 'pub.gpg'),
-        os.path.join(BASEDIR, 'gpg', 'sec.gpg'),
-    )
-
-
+# {{{1 get_output
 async def get_output(cmd, path):
     print("Running {} in {}".format(cmd, path))
     kwargs = {
@@ -41,7 +35,16 @@ async def get_output(cmd, path):
     return output_lines
 
 
+# {{{1 gpg
+def get_keyring():
+    return pgpy.PGPKeyring(
+        os.path.join(BASEDIR, 'gpg', 'pub.gpg'),
+        os.path.join(BASEDIR, 'gpg', 'sec.gpg'),
+    )
 
+
+
+# {{{1 create_cot
 async def get_file_shas(job_dir):
     file_list = await get_output(['find', '.', '-type', 'f'], job_dir)
     shas = {}
@@ -53,19 +56,33 @@ async def get_file_shas(job_dir):
     await asyncio.wait(futures.values())
     for k, v in futures.items():
         parts = v.result()[0].split('= ')
-        shas[k] = parts[1]
+        shas[k] = "SHA256:{}".format(parts[1])
     return shas
 
 
-async def create_manifest(job_type):
+def get_task_defn(job_dir):
+    with open(os.path.join(job_dir, 'public', 'taskcluster', 'task.json')) as fh:
+        return json.load(fh)
+
+
+async def create_cot(job_type):
     job_dir = os.path.join(BASEDIR, job_type, 'artifacts')
-    shas = await get_file_shas(job_dir)
-    return shas  # XXX
+    cot = {}
+    cot['extras'] = {}
+    cot['artifacts'] = await get_file_shas(job_dir)
+    cot['task'] = get_task_defn(job_dir)
+    cot['extras']['dockerChecksum'] = "TODO DOCKER SHA {}".format(cot['task']['workerType'])
+    # TODO taskId
+    # TODO runId
+    # TODO previousCoT
+    # TODO sign
+    return cot
 
 
+# {{{1 main
 async def async_main():
     job_type = 'decision'
-    pprint.pprint(await create_manifest(job_type))
+    pprint.pprint(await create_cot(job_type))
 
 
 def main(name=None):
