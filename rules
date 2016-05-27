@@ -45,10 +45,23 @@ decision
 * TODO: record the docker image sha, verify sha against whitelist
  * there is no docker image builder task, because it's downloaded from docker hub
 * artifact sums: anything used in the rules.
+
+### full graph verification
 * the task json matches the graph in taskcluster: no added tasks?
  * TODO: deal with multiple successful runs of the decision task.
 
 
 build
 -----
-* verify the sha/link of the 
+* number of each type of build task per task group == 1
+ * multiple runs are ok.
+* verify the sha/link of the decision task cot artifact
+* verify the docker sha -- whitelist of known (decision task, docker image builder)
+ * follow link to docker image builder task + verify the signature if its cot artifact
+ * if not known, it's ok if we have a signed docker image builder cot artifact from a whitelisted docker sha
+* build task matches the task.json
+
+
+other checks
+------------
+* do we care about valid workerId?  schedulerId?
