@@ -33,7 +33,7 @@ queue
 
 worker gpg keys
 ---------------
-* root gpg key(s): child keys must be signed by at least N keys in a whitelist?
+* root gpg key(s): child keys must be signed by at least N keys in a whitelist?  Split keys, 3/5 key shards needed to sign something?
 * families of keys: scriptworker, docker worker.  hooks keytype?
 * a way to generate a new, limited lifespan key every time we create a new worker AMI
 * a way to revoke keys and check for revocation
