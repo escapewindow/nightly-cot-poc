@@ -44,6 +44,15 @@ def get_keyring():
 
 
 
+def sign(string, key_id):
+    keyring = get_keyring()
+    message = pgpy.PGPMessage.new(string)
+    with keyring.key(key_id) as key:
+        # XXX a passphrase protected key will require an unlock
+        message |= key.sign(message)
+    return message
+
+
 # {{{1 create_cot
 async def get_file_shas(job_dir):
     file_list = await get_output(['find', '.', '-type', 'f'], job_dir)
@@ -83,14 +92,16 @@ async def create_cot(job_type):
     cot['taskId'] = "taskId{}".format(cot['task']['workerType'])
     cot['runId'] = 0
     # TODO previousCoT
+    cot_str = json.dumps(cot, indent=2, sort_keys=True)
+    signed_cot_str = sign(cot_str, 'docker1')
     # TODO sign
-    return cot
+    return signed_cot_str
 
 
 # {{{1 main
 async def async_main():
     job_type = 'decision'
-    print(json.dumps(await create_cot(job_type), indent=2))
+    print(await create_cot(job_type))
 
 
 def main(name=None):
