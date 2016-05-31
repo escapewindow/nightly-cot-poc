@@ -68,12 +68,20 @@ def get_task_defn(job_dir):
 async def create_cot(job_type):
     job_dir = os.path.join(BASEDIR, job_type, 'artifacts')
     cot = {}
-    cot['extras'] = {}
     cot['artifacts'] = await get_file_shas(job_dir)
     cot['task'] = get_task_defn(job_dir)
-    cot['extras']['dockerChecksum'] = "TODO DOCKER SHA {}".format(cot['task']['workerType'])
-    # TODO taskId
-    # TODO runId
+    # XXX real docker image shas + Docker Artifact Image Builder CoT
+    cot['extra'] = {
+        'dockerChecksum': "XXX DOCKER SHA {}".format(cot['task']['workerType'])
+    }
+    if 'decision' not in cot['task']['workerType']:
+        cot['extra']['dockerImageBuilder'] = {
+            'taskId': 'dockerImageBuilder',
+            'runId': 0
+        }
+    # XXX real taskId + runId
+    cot['taskId'] = "taskId{}".format(cot['task']['workerType'])
+    cot['runId'] = 0
     # TODO previousCoT
     # TODO sign
     return cot
@@ -82,7 +90,7 @@ async def create_cot(job_type):
 # {{{1 main
 async def async_main():
     job_type = 'decision'
-    pprint.pprint(await create_cot(job_type))
+    print(json.dumps(await create_cot(job_type), indent=2))
 
 
 def main(name=None):
