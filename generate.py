@@ -48,8 +48,8 @@ def get_key(key_id, keyring):
         yield key
 
 
-def sign(string, key):
-    message = pgpy.PGPMessage.new(string, cleartext=True)
+def sign(string, key, cleartext=False):
+    message = pgpy.PGPMessage.new(string, cleartext=cleartext)
     # XXX a passphrase protected key will require an unlock
     message |= key.sign(message)
     return message
@@ -108,8 +108,11 @@ async def async_main():
             print(dump_json(cot), file=fh, end="")
         with get_key('docker1', keyring) as key:
             signed_cot_str = sign(dump_json(unsigned), key)
+            cleartext_signed_cot_str = sign(dump_json(unsigned), key, cleartext=True)
         with open("{}.gpg".format(job_type), "w") as fh:
             print(signed_cot_str, file=fh, end="")
+        with open("{}_cleartext.gpg".format(job_type), "w") as fh:
+            print(cleartext_signed_cot_str, file=fh, end="")
 
 
 def main(name=None):
