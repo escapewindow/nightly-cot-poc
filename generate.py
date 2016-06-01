@@ -2,12 +2,18 @@
 
 import asyncio
 from asyncio.subprocess import PIPE
+from contextlib import contextmanager
+import glob
 import json
 import os
 import pgpy
-import pprint
 
 BASEDIR = os.path.abspath(os.path.dirname(__file__))
+
+
+# {{{1 misc
+def dump_json(obj):
+    return json.dumps(obj, indent=2, sort_keys=True)
 
 
 # {{{1 get_output
@@ -36,24 +42,20 @@ async def get_output(cmd, path):
 
 
 # {{{1 gpg
-def get_keyring():
-    return pgpy.PGPKeyring(
-        os.path.join(BASEDIR, 'gpg', 'pub.gpg'),
-        os.path.join(BASEDIR, 'gpg', 'sec.gpg'),
-    )
+def get_keyring(gpg_dir):
+    return pgpy.PGPKeyring(glob.glob(os.path.join(gpg_dir, '*.gpg')))
 
 
-
-def sign(string, key_id):
-    keyring = get_keyring()
-    message = pgpy.PGPMessage.new(string, cleartext=True)
+@contextmanager
+def get_key(key_id, keyring):
     with keyring.key(key_id) as key:
-        # XXX a passphrase protected key will require an unlock
-        sig = key.sign(message)
-        message |= sig
-    with open("foo.sig", "w") as fh:
-        print(sig, file=fh, end="")
-    print(str(message))
+        yield key
+
+
+def sign(string, key):
+    message = pgpy.PGPMessage.new(string, cleartext=True)
+    # XXX a passphrase protected key will require an unlock
+    message |= key.sign(message)
     return message
 
 
@@ -65,7 +67,7 @@ async def get_file_shas(job_dir):
     for f in file_list:
         path = f.replace('./', '')
         # use get_output() instead of hashlib because async
-        futures[f] = asyncio.ensure_future(get_output(['openssl', 'sha256', f], job_dir))
+        futures[path] = asyncio.ensure_future(get_output(['openssl', 'sha256', f], job_dir))
     await asyncio.wait(futures.values())
     for k, v in futures.items():
         parts = v.result()[0].split('= ')
@@ -95,17 +97,25 @@ async def create_cot(job_type):
     # XXX real taskId + runId
     cot['taskId'] = "taskId{}".format(cot['task']['workerType'])
     cot['runId'] = 0
-    # TODO previousCoT
-    cot_str = json.dumps(cot, indent=2, sort_keys=True)
-    signed_cot_str = sign(cot_str, 'docker1')
-    # TODO sign
-    return signed_cot_str
+    return cot
 
 
 # {{{1 main
 async def async_main():
-    job_type = 'decision'
-    print(await create_cot(job_type))
+    unsigned = []
+    keyring = get_keyring(os.path.join(BASEDIR, "gpg"))
+    for job_type in ('decision', 'build'):
+        cot = await create_cot(job_type)
+        # XXX we'll need to make this unique because there will be duplicated
+        # jobs in dependency chains.  decision task at the front, this
+        # job at the end.
+        unsigned.append(cot)
+        with open("{}.txt".format(job_type), "w") as fh:
+            print(dump_json(cot), file=fh, end="")
+        with get_key('docker1', keyring) as key:
+            signed_cot_str = sign(dump_json(unsigned), key)
+        with open("{}.gpg".format(job_type), "w") as fh:
+            print(signed_cot_str, file=fh, end="")
 
 
 def main(name=None):
