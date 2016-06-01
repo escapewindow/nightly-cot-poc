@@ -18,15 +18,13 @@ import os
 
 #print(contents)
 gpghome = os.path.join(os.getcwd(), 'gpg')
+os.chmod(gpghome, 0o700)
 print(gpghome)
-gpg = gnupg.GPG(gpgbinary='gpg2', gnupghome=gpghome)
+gpg = gnupg.GPG(gpgbinary='gpg2', gnupghome=gpghome, verbose=True)
 gpg.encoding = 'utf-8'
 print(gpg.list_keys())
-#kr = pgpy.PGPKeyring(glob.glob('gpg/*.gpg'))
-#message = pgpy.PGPMessage.from_file('decision.gpg')
-#print(message.is_signed)
-#print(message.signatures)
-#with kr.key('docker1') as key:
-#    print(key.verify(message))
-with open("decision.gpg", "r") as fh:
-    print(gpg.verify_file(fh))
+print(dir(gpg))
+for f in ("decision.gpg", "decision_cleartext.gpg"):
+    with open(os.path.join("cot", f), "rb") as fh:
+        verified = gpg.verify_file(fh)
+        print("{} {}".format(f, verified))
