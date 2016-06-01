@@ -4,7 +4,7 @@ chain of trust artifact creation
 * chain-of-trust.json:
 
 ```json
-{
+[{
     "artifacts": {
         "name1": "SHA256:...",
         "name2": "SHA256:...",
@@ -13,13 +13,6 @@ chain of trust artifact creation
     "runId": "...",
     "task": {
     },
-    "chainOfTrust": [{
-        "url": "...",
-        "checksum": "SHA256:..."
-    }, {
-        "url": "...",
-        "checksum": "SHA256:..."
-    }],
     "extra": {
         "dockerChecksum": "SHA256:...",
         "dockerImageBuilder": {
@@ -27,13 +20,12 @@ chain of trust artifact creation
             "runId": "...",
         }
     }
-}
+}, {
+    ...
+}]
 ```
+ * the list of dictionaries contains information about each job in the chain of trust.  it starts with the decision task and continues on until 'this' task.
  * signed.
-
-* full-chain-of-trust.json:
- * a list of the above chain-of-trust.json files, and signed.
- * we could do this per-task, or have a report-generator task at the end that conglomerates, reports on auditable information / instance ids / etc.
 
 
 decision
