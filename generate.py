@@ -93,7 +93,7 @@ async def create_cot(artifact_shas, task_defn):
 # {{{1 main
 async def async_main():
     unsigned = []
-    keyring = pgpy.PGPKeyring(glob.glob(os.path.join(BASEDIR, "gpg", '*.gpg')))
+    keyring = pgpy.PGPKeyring(glob.glob(os.path.join(BASEDIR, "gpg", '*ring.gpg')))
     for job_type in ('decision', 'build'):
         print("Creating {} chain of trust artifact...".format(job_type))
         job_dir = os.path.join(BASEDIR, job_type, 'artifacts')
@@ -105,14 +105,14 @@ async def async_main():
         # jobs in dependency chains.  decision task at the front, this
         # job at the end.
         unsigned.append(cot)
-        with open("{}.txt".format(job_type), "w") as fh:
+        with open("cot/{}.txt".format(job_type), "w") as fh:
             print(dump_json(cot), file=fh, end="")
         with get_key('docker1', keyring) as key:
             signed_cot_str = sign(dump_json(unsigned), key)
             cleartext_signed_cot_str = sign(dump_json(unsigned), key, cleartext=True)
-        with open("{}.gpg".format(job_type), "w") as fh:
+        with open("cot/{}.gpg".format(job_type), "w") as fh:
             print(signed_cot_str, file=fh, end="")
-        with open("{}_cleartext.gpg".format(job_type), "w") as fh:
+        with open("cot/{}_cleartext.gpg".format(job_type), "w") as fh:
             print(cleartext_signed_cot_str, file=fh, end="")
 
 
