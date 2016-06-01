@@ -11,7 +11,7 @@ import pgpy
 BASEDIR = os.path.abspath(os.path.dirname(__file__))
 
 
-# {{{1 misc
+# {{{1 dump_json
 def dump_json(obj):
     return json.dumps(obj, indent=2, sort_keys=True)
 
@@ -42,10 +42,6 @@ async def get_output(cmd, path):
 
 
 # {{{1 gpg
-def get_keyring(gpg_dir):
-    return pgpy.PGPKeyring(glob.glob(os.path.join(gpg_dir, '*.gpg')))
-
-
 @contextmanager
 def get_key(key_id, keyring):
     with keyring.key(key_id) as key:
@@ -60,14 +56,14 @@ def sign(string, key):
 
 
 # {{{1 create_cot
-async def get_file_shas(job_dir):
-    file_list = await get_output(['find', '.', '-type', 'f'], job_dir)
+async def get_file_shas(job_dir, output_callback):
+    file_list = await output_callback(['find', '.', '-type', 'f'], job_dir)
     shas = {}
     futures = {}
     for f in file_list:
         path = f.replace('./', '')
         # use get_output() instead of hashlib because async
-        futures[path] = asyncio.ensure_future(get_output(['openssl', 'sha256', f], job_dir))
+        futures[path] = asyncio.ensure_future(output_callback(['openssl', 'sha256', f], job_dir))
     await asyncio.wait(futures.values())
     for k, v in futures.items():
         parts = v.result()[0].split('= ')
@@ -75,16 +71,10 @@ async def get_file_shas(job_dir):
     return shas
 
 
-def get_task_defn(job_dir):
-    with open(os.path.join(job_dir, 'public', 'taskcluster', 'task.json')) as fh:
-        return json.load(fh)
-
-
-async def create_cot(job_type):
-    job_dir = os.path.join(BASEDIR, job_type, 'artifacts')
+async def create_cot(job_type, artifact_shas, task_defn):
     cot = {}
-    cot['artifacts'] = await get_file_shas(job_dir)
-    cot['task'] = get_task_defn(job_dir)
+    cot['artifacts'] = artifact_shas
+    cot['task'] = task_defn
     # XXX real docker image shas + Docker Artifact Image Builder CoT
     cot['extra'] = {
         'dockerChecksum': "XXX DOCKER SHA {}".format(cot['task']['workerType'])
@@ -103,9 +93,13 @@ async def create_cot(job_type):
 # {{{1 main
 async def async_main():
     unsigned = []
-    keyring = get_keyring(os.path.join(BASEDIR, "gpg"))
+    keyring = pgpy.PGPKeyring(glob.glob(os.path.join(BASEDIR, "gpg", '*.gpg')))
     for job_type in ('decision', 'build'):
-        cot = await create_cot(job_type)
+        job_dir = os.path.join(BASEDIR, job_type, 'artifacts')
+        with open(os.path.join(job_dir, 'public', 'taskcluster', 'task.json')) as fh:
+            task_defn = json.load(fh)
+        artifact_shas = await get_file_shas(job_dir, get_output)
+        cot = await create_cot(job_type, artifact_shas, task_defn)
         # XXX we'll need to make this unique because there will be duplicated
         # jobs in dependency chains.  decision task at the front, this
         # job at the end.
