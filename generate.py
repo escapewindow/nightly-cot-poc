@@ -71,7 +71,7 @@ async def get_file_shas(job_dir, output_callback):
     return shas
 
 
-async def create_cot(job_type, artifact_shas, task_defn):
+async def create_cot(artifact_shas, task_defn):
     cot = {}
     cot['artifacts'] = artifact_shas
     cot['task'] = task_defn
@@ -95,11 +95,12 @@ async def async_main():
     unsigned = []
     keyring = pgpy.PGPKeyring(glob.glob(os.path.join(BASEDIR, "gpg", '*.gpg')))
     for job_type in ('decision', 'build'):
+        print("Creating {} chain of trust artifact...".format(job_type))
         job_dir = os.path.join(BASEDIR, job_type, 'artifacts')
         with open(os.path.join(job_dir, 'public', 'taskcluster', 'task.json')) as fh:
             task_defn = json.load(fh)
         artifact_shas = await get_file_shas(job_dir, get_output)
-        cot = await create_cot(job_type, artifact_shas, task_defn)
+        cot = await create_cot(artifact_shas, task_defn)
         # XXX we'll need to make this unique because there will be duplicated
         # jobs in dependency chains.  decision task at the front, this
         # job at the end.
