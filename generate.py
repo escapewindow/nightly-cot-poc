@@ -46,10 +46,14 @@ def get_keyring():
 
 def sign(string, key_id):
     keyring = get_keyring()
-    message = pgpy.PGPMessage.new(string)
+    message = pgpy.PGPMessage.new(string, cleartext=True)
     with keyring.key(key_id) as key:
         # XXX a passphrase protected key will require an unlock
-        message |= key.sign(message)
+        sig = key.sign(message)
+        message |= sig
+    with open("foo.sig", "w") as fh:
+        print(sig, file=fh, end="")
+    print(str(message))
     return message
 
 
