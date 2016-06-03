@@ -26,7 +26,7 @@ def get_body(clearsign_fh):
                 break
             body.append(line)
     else:
-        raise Exception("Missing signature!")
+        raise ValueError("Missing signature!")
     return ''.join(body)
 
 gpghome = os.path.join(os.getcwd(), 'gpg')
