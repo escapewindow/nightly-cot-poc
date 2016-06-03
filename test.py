@@ -24,9 +24,9 @@ def get_body(clearsign_fh):
                 continue
             if bareline == '-----BEGIN PGP SIGNATURE-----':
                 break
-            if bareline == '-----END PGP SIGNATURE-----':
-                raise Exception("Missing signature!")
             body.append(line)
+    else:
+        raise Exception("Missing signature!")
     return ''.join(body)
 
 gpghome = os.path.join(os.getcwd(), 'gpg')
@@ -43,4 +43,6 @@ for f in ("decision.gpg", "decision_cleartext.gpg"):
             print("Not a good signature!")
 
 with open(os.path.join("cot", "decision_cleartext.gpg"), "r") as fh:
+    print(get_body(fh))
+with open("test.py", "r") as fh:
     print(get_body(fh))
