@@ -98,6 +98,13 @@ async def get_artifact(context, artifact_defn, task_id, hash_alg="sha256"):
     return artifact_defn['name'], sha.hexdigest
 
 
+def get_status(context, task_id):
+    task_status = await context.queue.status(task_id)
+    if task_status['status']['state'] != 'completed' or task_status['status']['runs'][-1]['state'] != 'completed':
+        raise Exception("Task {} not completed!\n{}".format(task_id, pprint.pformat(task_status)))
+    return task_status
+
+
 def get_docker_image_sha(task_id, task_defn):
     if task_defn['payload']['image'] in WHITELIST_DOCKER_IMAGE_NAMES:
         regex = DOCKER_HUB_REGEX
@@ -118,7 +125,17 @@ def get_docker_image_sha(task_id, task_defn):
             raise Exception("Can't find docker image sha in %s!" % path)
 
 
-def build_cot(artifact_dict, task_defn, task_id, task_status, **kwargs):
+def build_cot(context, artifact_dict, task_id, task_status=None):
+    task_status = task_status or get_task_status(context, task_id)
+    task_defn = await context.queue.task(task_id)
+    # hack in cot flag until it's built in
+    task_defn['payload']['features']['generateCertificate'] = True
+    # Generate CoT artifact
+    extra = {
+        "imageArtifactSha256": get_docker_image_sha(task_id, task_defn)
+    }
+    with open("{}/task.json".format(task_id), "w") as fh:
+        print(dump_json(task_defn), file=fh, end='')
     cot = {
         "artifacts": [],
         "task": task_defn,
@@ -133,9 +150,6 @@ def build_cot(artifact_dict, task_defn, task_id, task_status, **kwargs):
 
 
 async def download_artifacts(context, task_id):
-    task_status = await context.queue.status(task_id)
-    if task_status['status']['state'] != 'completed' or task_status['status']['runs'][-1]['state'] != 'completed':
-        raise Exception("Task {} not completed!\n{}".format(task_id, pprint.pformat(task_status)))
     artifact_list = await context.queue.listLatestArtifacts(task_id)
     async_tasks = []
     artifact_dict = {}
@@ -152,24 +166,21 @@ async def download_artifacts(context, task_id):
             raise exc
         name, sha = task.result()
         artifact_dict[name] = sha
-    task_defn = await context.queue.task(task_id)
-    # hack in cot flag until it's built in
-    task_defn['payload']['features']['generateCertificate'] = True
-    # Generate CoT artifact
-    extra = {
-        "imageArtifactSha256": get_docker_image_sha(task_id, task_defn)
-    }
-    cot = build_cot(artifact_dict, task_defn, task_id, task_status, **extra)
-    with open("{}/task.json".format(task_id), "w") as fh:
-        print(dump_json(task_defn), file=fh, end='')
+    return artifact_dict
 
 
 # main {{{1
 async def async_main(context):
     rm(context.decision_task_id)
     log.info("Decision task %s", context.decision_task_id)
-    await download_artifacts(context, context.decision_task_id)
+    decision_task_status = get_status(context, task_id)
+    artifact_dict = await download_artifacts(context, context.decision_task_id)
     graph_path = "{}/public/task-graph.json".format(context.decision_task_id)
+    # TODO hack signing task defn in
+    build_cot(context, artifact_dict, task_id, task_status=decision_task_status)
+    # TODO do the same for build(s)
+    # TODO do the same for BZpO3hsUQvyXH6On1wnfRw (docker image builder)
+    #      build_task_defn['payload']['image']['taskId']
 
 
 def main(name=None):
@@ -182,6 +193,10 @@ def main(name=None):
         makedirs("build")
         orig_dir = os.getcwd()
         context = Values()
+        gpghome = os.path.join(os.getcwd(), 'gpg')
+        os.chmod(context.gpghome, 0o700)
+        context.gpg = gnupg.GPG(gpgbinary='gpg2', gnupghome=gnupghome)
+        context.gpg.encoding = 'utf-8'
         credentials = {
             'credentials': {
                 'clientId': os.environ["TASKCLUSTER_CLIENT_ID"],
