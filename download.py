@@ -2,11 +2,13 @@
 
 import aiohttp
 import asyncio
+import hashlib
 import json
 import logging
 from optparse import Values
 import os
 import pprint
+import re
 import shutil
 import sys
 from taskcluster.async import Queue
@@ -20,6 +22,14 @@ WORKER_TO_GPG_KEY = {
     "opt-linux64": "docker1",
     "image-builder": "DockerImageBuilder",  # fake workerType
 }
+WHITELIST_DOCKER_IMAGE_NAMES = (
+    "taskcluster/decision:0.1.0",
+)
+# Ugly. Until docker-worker embeds this info, use regex on live.log
+DOCKER_HUB_REGEX = re.compile(r"""Digest: (sha256:[0-9a-f]+)$""")
+DOCKER_IMAGE_ARTIFACT_REGEX = re.compile(
+    r"""\[taskcluster [0-9-:Z ]+\] Image '{path}' from task '{taskId}' loaded\.  Using image ID (sha256:[0-9a-f]+)\.$"""
+)
 
 
 # helper functions {{{1
@@ -64,7 +74,8 @@ async def retry_async(func, attempts=5, sleeptime_callback=None,
             await asyncio.sleep(sleeptime_callback(attempt))
 
 
-async def get_artifact(context, artifact_defn, task_id):
+# download_artifacts {{{1
+async def get_artifact(context, artifact_defn, task_id, hash_alg="sha256"):
     log.debug("Getting %s %s", task_id, artifact_defn["name"])
     path = "{}/{}".format(task_id, artifact_defn['name'])
     parent_dir = '/'.join(path.split('/')[:-1])
@@ -77,6 +88,7 @@ async def get_artifact(context, artifact_defn, task_id):
         }
     )
     signed_url = context.queue.buildSignedUrl(requestUrl=unsigned_url)
+    sha = hashlib.new(hash_alg)
     async with context.session.get(signed_url) as resp:
         with open(path, "wb") as fh:
             while True:
@@ -84,21 +96,47 @@ async def get_artifact(context, artifact_defn, task_id):
                 if not chunk:
                     break
                 fh.write(chunk)
+                sha.update(chunk)
+    return artifact_defn['name'], sha.hexdigest
 
 
-# download_artifacts {{{1
+def get_docker_image_sha(task_id, task_defn):
+    info = {}
+    if task_defn['payload']['image'] in WHITELIST_DOCKER_IMAGE_NAMES:
+        regex = DOCKER_HUB_REGEX
+    else:
+        regex = DOCKER_IMAGE_ARTIFACT_REGEX.format(
+            path=task_defn['payload']['image']['path'],
+            taskId=task_defn['payload']['image']['taskId'],
+        )
+    # TODO parse live.log
+    return info
+
+
+def build_cot(artifact_dict, task_defn, task_id, task_status, **kwargs):
+    cot = {
+        "artifacts": [],
+        "task": task_defn,
+        "task_id": task_id,
+    }
+    assert task_id == task_status['status']['taskId']
+    cot["runId"] = task_status['status']['runs'][-1]['runId']
+    cot["workerGroup"] = task_status['status']['runs'][-1]['workerGroup']
+    cot["workerId"] = task_status['status']['runs'][-1]['workerId']
+    cot["extra"] = kwargs
+
+
 async def download_artifacts(context, task_id):
     task_status = await context.queue.status(task_id)
     if task_status['status']['state'] != 'completed' or task_status['status']['runs'][-1]['state'] != 'completed':
         raise Exception("Task {} not completed!\n{}".format(task_id, pprint.pformat(task_status)))
-    run_id = task_status['status']['runs'][-1]['runId']
     artifact_list = await context.queue.listLatestArtifacts(task_id)
     async_tasks = []
+    artifact_dict = {}
     for artifact_defn in artifact_list['artifacts']:
         async_tasks.append(
             asyncio.ensure_future(
                 retry_async(get_artifact, args=(context, artifact_defn, task_id))
-                # get_artifact(context, artifact_defn, task_id)
             )
         )
     await asyncio.wait(async_tasks)
@@ -106,17 +144,26 @@ async def download_artifacts(context, task_id):
         exc = task.exception()
         if exc is not None:
             raise exc
-    # Generate CoT artifact
+        name, sha = task.result()
+        artifact_dict[name] = sha
     task_defn = await context.queue.task(task_id)
-    return task_defn
+    # hack in cot flag until it's built in
+    task_defn['payload']['features']['generateCertificate'] = True
+    # Generate CoT artifact
+    extra = {
+        "imageArtifactSha256": get_docker_image_sha(task_id, task_defn)
+    }
+    cot = build_cot(artifact_dict, task_defn, task_id, task_status, **extra)
+    with open("{}/task.json".format(task_id), "w") as fh:
+        print(dump_json(task_defn), file=fh, end='')
 
 
 # main {{{1
 async def async_main(context):
     rm(context.decision_task_id)
     log.info("Decision task %s", context.decision_task_id)
-    task_defn = await download_artifacts(context, context.decision_task_id)
-    pprint.pprint(task_defn)
+    await download_artifacts(context, context.decision_task_id)
+    graph_path = "{}/public/task-graph.json".format(context.decision_task_id)
 
 
 def main(name=None):
