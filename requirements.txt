@@ -1,1 +1,2 @@
-PGPy
+python-gnupg
+taskcluster

@@ -1,9 +1,0 @@
-task inspector: https://tools.taskcluster.net/task-inspector/#WvGV52tKQVyJKxshn3mWvw
-task definition: https://queue.taskcluster.net/v1/task/WvGV52tKQVyJKxshn3mWvw
-taskId WvGV52tKQVyJKxshn3mWvw
-runId 0
-taskGroupId PlBPNvNaTx6wl6HZ7qWTzw
-schedulerId task-graph-scheduler
-workerType gecko-decision
-provisionerId aws-provisioner-v1
-source https://hg.mozilla.org/integration/mozilla-inbound/raw-file/0e5d81aae722abed63c12d3eddda8c51e97d6e1b/.taskcluster.yml
