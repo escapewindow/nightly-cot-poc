@@ -2,6 +2,7 @@
 
 import aiohttp
 import asyncio
+import gnupg
 import hashlib
 import json
 import logging
@@ -98,8 +99,9 @@ async def get_artifact(context, artifact_defn, task_id, hash_alg="sha256"):
     return artifact_defn['name'], sha.hexdigest
 
 
-def get_status(context, task_id):
+async def get_status(context, task_id):
     task_status = await context.queue.status(task_id)
+    # XXX assuming the last run is the right run, here and in build_cot()
     if task_status['status']['state'] != 'completed' or task_status['status']['runs'][-1]['state'] != 'completed':
         raise Exception("Task {} not completed!\n{}".format(task_id, pprint.pformat(task_status)))
     return task_status
@@ -125,7 +127,7 @@ def get_docker_image_sha(task_id, task_defn):
             raise Exception("Can't find docker image sha in %s!" % path)
 
 
-def build_cot(context, artifact_dict, task_id, task_status=None):
+async def build_cot(context, artifact_dict, task_id, task_status=None):
     task_status = task_status or get_task_status(context, task_id)
     task_defn = await context.queue.task(task_id)
     # hack in cot flag until it's built in
@@ -134,19 +136,22 @@ def build_cot(context, artifact_dict, task_id, task_status=None):
     extra = {
         "imageArtifactSha256": get_docker_image_sha(task_id, task_defn)
     }
+    # XXX task.json only here for debugging purposes, probably not needed
     with open("{}/task.json".format(task_id), "w") as fh:
         print(dump_json(task_defn), file=fh, end='')
+    assert task_id == task_status['status']['taskId']
     cot = {
         "artifacts": [],
         "task": task_defn,
-        "task_id": task_id,
+        "extra": extra,
+        "taskId": task_id,
+        "runId": task_status['status']['runs'][-1]['runId'],
+        "workerGroup": task_status['status']['runs'][-1]['workerGroup'],
+        "workerId": task_status['status']['runs'][-1]['workerId'],
     }
-    assert task_id == task_status['status']['taskId']
-    cot["runId"] = task_status['status']['runs'][-1]['runId']
-    cot["workerGroup"] = task_status['status']['runs'][-1]['workerGroup']
-    cot["workerId"] = task_status['status']['runs'][-1]['workerId']
-    cot["extra"] = kwargs
-    # TODO
+    cot_text = dump_json(cot)
+    keyid = WORKER_TO_GPG_KEY[task_defn['workerType']]
+    signed_text = context.gpg.sign(cot_text, keyid=keyid, output="{}/certificate.gpg".format(task_id))
 
 
 async def download_artifacts(context, task_id):
@@ -173,11 +178,11 @@ async def download_artifacts(context, task_id):
 async def async_main(context):
     rm(context.decision_task_id)
     log.info("Decision task %s", context.decision_task_id)
-    decision_task_status = get_status(context, task_id)
+    decision_task_status = await get_status(context, context.decision_task_id)
     artifact_dict = await download_artifacts(context, context.decision_task_id)
     graph_path = "{}/public/task-graph.json".format(context.decision_task_id)
     # TODO hack signing task defn in
-    build_cot(context, artifact_dict, task_id, task_status=decision_task_status)
+    await build_cot(context, artifact_dict, context.decision_task_id, task_status=decision_task_status)
     # TODO do the same for build(s)
     # TODO do the same for BZpO3hsUQvyXH6On1wnfRw (docker image builder)
     #      build_task_defn['payload']['image']['taskId']
@@ -193,8 +198,8 @@ def main(name=None):
         makedirs("build")
         orig_dir = os.getcwd()
         context = Values()
-        gpghome = os.path.join(os.getcwd(), 'gpg')
-        os.chmod(context.gpghome, 0o700)
+        gnupghome = os.path.join(os.getcwd(), 'gpg')
+        os.chmod(gnupghome, 0o700)
         context.gpg = gnupg.GPG(gpgbinary='gpg2', gnupghome=gnupghome)
         context.gpg.encoding = 'utf-8'
         credentials = {
