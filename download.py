@@ -10,6 +10,7 @@ import pprint
 import shutil
 import sys
 from taskcluster.async import Queue
+from taskcluster.utils import calculateSleepTime
 import tempfile
 
 log = logging.getLogger(__name__)
@@ -45,7 +46,26 @@ def makedirs(path):
     assert os.path.isdir(path)
 
 
+async def retry_async(func, attempts=5, sleeptime_callback=None,
+                      retry_exceptions=(Exception, ), args=(), kwargs=None):
+    kwargs = kwargs or {}
+    sleeptime_callback = sleeptime_callback or calculateSleepTime
+    attempt = 1
+    while True:
+        try:
+            log.debug("retry_async: Calling {}, attempt {}".format(func, attempt))
+            return await func(*args, **kwargs)
+        except retry_exceptions:
+            attempt += 1
+            if attempt > attempts:
+                log.warning("retry_async: {}: too many retries!".format(func))
+                raise
+            log.debug("retry_async: {}: sleeping before retry".format(func))
+            await asyncio.sleep(sleeptime_callback(attempt))
+
+
 async def get_artifact(context, artifact_defn, task_id):
+    log.debug("Getting %s %s", task_id, artifact_defn["name"])
     path = "{}/{}".format(task_id, artifact_defn['name'])
     parent_dir = '/'.join(path.split('/')[:-1])
     makedirs(parent_dir)
@@ -69,21 +89,24 @@ async def get_artifact(context, artifact_defn, task_id):
 # download_artifacts {{{1
 async def download_artifacts(context, task_id):
     task_status = await context.queue.status(task_id)
-    if task_status['status']['state'] != 'completed':
+    if task_status['status']['state'] != 'completed' or task_status['status']['runs'][-1]['state'] != 'completed':
         raise Exception("Task {} not completed!\n{}".format(task_id, pprint.pformat(task_status)))
+    run_id = task_status['status']['runs'][-1]['runId']
     artifact_list = await context.queue.listLatestArtifacts(task_id)
     async_tasks = []
     for artifact_defn in artifact_list['artifacts']:
         async_tasks.append(
-            asyncio.ensure_future(get_artifact(context, artifact_defn, task_id))
+            asyncio.ensure_future(
+                retry_async(get_artifact, args=(context, artifact_defn, task_id))
+                # get_artifact(context, artifact_defn, task_id)
+            )
         )
     await asyncio.wait(async_tasks)
     for task in async_tasks:
         exc = task.exception()
         if exc is not None:
             raise exc
-
-    sys.exit(0)
+    # Generate CoT artifact
     task_defn = await context.queue.task(task_id)
     return task_defn
 
@@ -92,7 +115,8 @@ async def download_artifacts(context, task_id):
 async def async_main(context):
     rm(context.decision_task_id)
     log.info("Decision task %s", context.decision_task_id)
-    await download_artifacts(context, context.decision_task_id)
+    task_defn = await download_artifacts(context, context.decision_task_id)
+    pprint.pprint(task_defn)
 
 
 def main(name=None):
@@ -111,16 +135,16 @@ def main(name=None):
                 'accessToken': os.environ["TASKCLUSTER_ACCESS_TOKEN"],
             }
         }
+        loop = asyncio.get_event_loop()
         try:
             os.chdir("build")
             with aiohttp.ClientSession() as context.session:
                 context.queue = Queue(credentials, session=context.session)
                 context.decision_task_id = sys.argv[1]
-                loop = asyncio.get_event_loop()
                 loop.run_until_complete(async_main(context))
-                loop.close()
         finally:
             os.chdir(orig_dir)
+            loop.close()
 
 
 main(name=__name__)
