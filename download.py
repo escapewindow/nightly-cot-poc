@@ -27,9 +27,7 @@ WHITELIST_DOCKER_IMAGE_NAMES = (
 )
 # Ugly. Until docker-worker embeds this info, use regex on live.log
 DOCKER_HUB_REGEX = re.compile(r"""Digest: (sha256:[0-9a-f]+)$""")
-DOCKER_IMAGE_ARTIFACT_REGEX = re.compile(
-    r"""\[taskcluster [0-9-:Z ]+\] Image '{path}' from task '{taskId}' loaded\.  Using image ID (sha256:[0-9a-f]+)\.$"""
-)
+DOCKER_IMAGE_ARTIFACT_REGEX = r"""\[taskcluster [0-9-:Z\. ]+\] Image '{path}' from task '{taskId}' loaded\.  Using image ID (sha256:[0-9a-f]+)\.$"""
 
 
 # helper functions {{{1
@@ -101,16 +99,23 @@ async def get_artifact(context, artifact_defn, task_id, hash_alg="sha256"):
 
 
 def get_docker_image_sha(task_id, task_defn):
-    info = {}
     if task_defn['payload']['image'] in WHITELIST_DOCKER_IMAGE_NAMES:
         regex = DOCKER_HUB_REGEX
     else:
-        regex = DOCKER_IMAGE_ARTIFACT_REGEX.format(
+        regex = re.compile(DOCKER_IMAGE_ARTIFACT_REGEX.format(
             path=task_defn['payload']['image']['path'],
             taskId=task_defn['payload']['image']['taskId'],
-        )
-    # TODO parse live.log
-    return info
+        ))
+    path = "{}/public/logs/live.log".format(task_id)
+    with open(path, "r") as fh:
+        line = fh.readline()
+        while line:
+            m = regex.match(line)
+            if m is not None:
+                return m.group(1)
+            line = fh.readline()
+        else:
+            raise Exception("Can't find docker image sha in %s!" % path)
 
 
 def build_cot(artifact_dict, task_defn, task_id, task_status, **kwargs):
@@ -124,6 +129,7 @@ def build_cot(artifact_dict, task_defn, task_id, task_status, **kwargs):
     cot["workerGroup"] = task_status['status']['runs'][-1]['workerGroup']
     cot["workerId"] = task_status['status']['runs'][-1]['workerId']
     cot["extra"] = kwargs
+    # TODO
 
 
 async def download_artifacts(context, task_id):
