@@ -151,7 +151,9 @@ async def build_cot(context, artifact_dict, task_id, task_status=None):
     }
     cot_text = dump_json(cot)
     keyid = WORKER_TO_GPG_KEY[task_defn['workerType']]
-    signed_text = context.gpg.sign(cot_text, keyid=keyid, output="{}/certificate.gpg".format(task_id))
+    signed_text = context.gpg.sign(
+        cot_text, keyid=keyid, output="{}/certificate.json.gpg".format(task_id)
+    )
 
 
 async def download_artifacts(context, task_id):
