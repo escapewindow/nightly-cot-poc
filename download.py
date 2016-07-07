@@ -202,7 +202,7 @@ async def async_main(context):
     graph_path = "{}/public/task-graph.json".format(context.decision_task_id)
     with open(graph_path, "r") as fh:
         task_graph = json.load(fh)
-    # TODO hack signing task defn in
+    # TODO hack signing task defn in?
     await build_cot(context, artifacts, context.decision_task_id, task_status=decision_task_status)
     build_task_ids = find_builds(task_graph)
     for task_id in build_task_ids:
@@ -211,7 +211,6 @@ async def async_main(context):
         task_status = await get_status(context, task_id)
         artifacts = await download_artifacts(context, task_id)
         await build_cot(context, artifacts, task_id, task_status=task_status)
-    # TODO done? do the same for BZpO3hsUQvyXH6On1wnfRw (docker image builder)
 
 
 def main(name=None):
