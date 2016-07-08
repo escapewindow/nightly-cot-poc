@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 """Convert a cleartext-signed message into an ascii-armored message.
+https://lists.gnupg.org/pipermail/gnupg-users/2007-June/031414.html
 """
 import gnupg
 import hashlib
