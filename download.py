@@ -1,4 +1,7 @@
 #!/usr/bin/env python
+"""Download all artifacts from decision, build, and docker image artifact builder
+tasks, and generate Chain of Trust artifacts for them.
+"""
 
 import aiohttp
 import asyncio

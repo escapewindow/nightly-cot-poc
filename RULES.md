@@ -57,6 +57,6 @@ build
 other checks
 ------------
 * do we care about valid workerId?  schedulerId?  whitelists?
-
+* repo+revision is on a valid branch and within a certain age
 * the signing task is part of the task-graph?
 * signing task.payload.features.generateCertificate is True?
