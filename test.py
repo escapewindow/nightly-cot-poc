@@ -4,30 +4,30 @@ import glob
 import gnupg
 import os
 
-def get_body(clearsign_fh):
+def get_sig(clearsign_fh):
     """The gpg2 man page recommends not using clearsigning, but instead
     detached signatures or ascii armored files.  If we proceed with clearsigning
     for human readability and single download, we might use something like this:
     """
-    in_body = False
+    in_sig = False
     lines_to_skip = 0
-    body = []
+    sig = []
     for line in clearsign_fh:
         bareline = line.rstrip()
-        if bareline == '-----BEGIN PGP SIGNED MESSAGE-----':
-            in_body = True
+        if bareline == '-----BEGIN PGP SIGNATURE-----':
+            in_sig = True
             lines_to_skip = 2
             continue
-        if in_body:
+        if in_sig:
             if lines_to_skip:
                 lines_to_skip -= 1
                 continue
-            if bareline == '-----BEGIN PGP SIGNATURE-----':
+            if bareline == '-----END PGP SIGNATURE-----':
                 break
-            body.append(line)
+            sig.append(line)
     else:
         raise ValueError("Missing signature!")
-    return ''.join(body)
+    return ''.join(sig)
 
 gpghome = os.path.join(os.getcwd(), 'gpg')
 os.chmod(gpghome, 0o700)
@@ -35,14 +35,14 @@ os.chmod(gpghome, 0o700)
 gpg = gnupg.GPG(gpgbinary='gpg2', gnupghome=gpghome)
 gpg.encoding = 'utf-8'
 print(dir(gpg))
-for f in ("decision.gpg", "decision_cleartext.gpg"):
-    with open(os.path.join("cot", f), "rb") as fh:
+for f in ("x.gpg", ):
+    with open(f, "rb") as fh:
         verified = gpg.verify_file(fh)
         print("{} {} {} {} {}".format(f, verified.valid, verified.status, verified.key_id, verified.username))
         if verified.status not in ('signature good', "signature valid"):  # XXX only signature good for production
             print("Not a good signature!")
 
-with open(os.path.join("cot", "decision_cleartext.gpg"), "r") as fh:
-    print(get_body(fh))
-with open("test.py", "r") as fh:
-    print(get_body(fh))
+with open("x.gpg", "r") as fh:
+    print(get_sig(fh).rstrip())
+#with open("test.py", "r") as fh:
+#    print(get_sig(fh))

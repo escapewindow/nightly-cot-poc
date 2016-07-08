@@ -54,6 +54,26 @@ def get_body(path):
     return body
 
 
+def get_sig(clearsign_fh):
+    """The gpg2 man page recommends not using clearsigning, but instead
+    detached signatures or ascii armored files.  If we proceed with clearsigning
+    for human readability and single download, we might use something like this:
+    """
+    in_sig = False
+    sig = []
+    for line in clearsign_fh:
+        bareline = line.rstrip()
+        if bareline == '-----BEGIN PGP SIGNATURE-----':
+            in_sig = True
+        if in_sig:
+            sig.append(line)
+            if bareline == '-----END PGP SIGNATURE-----':
+                break
+    if not sig:
+        raise ValueError("Missing signature!")
+    return ''.join(sig)
+
+
 # main {{{1
 def main(name=None):
     if name not in (None, __name__):
@@ -81,7 +101,29 @@ def main(name=None):
     print(verified.key_id)
     print(verified.status)
     body = get_body(sys.argv[1])
-    print(body)
+    if body.endswith('\n') or body.endswith('\r'):
+        body = body[:-1]
+    with open("text_part", "w") as fh:
+        print(body, file=fh, end='')
+    with open(sys.argv[1], "r") as fh:
+        with open("sig_part", "w") as out:
+            print(get_sig(fh), file=out, end='')
+    subprocess.check_call(
+        './gpg.sh --output sig_part.gpg --dearmor < sig_part', shell=True
+    )
+    subprocess.check_call(
+        ['./gpg.sh', '-z0', '--textmode', '--store', 'text_part']
+    )
+    subprocess.check_call(
+        'cat sig_part.gpg text_part.gpg > my_new_file.gpg', shell=True
+    )
+    with open("my_new_file.gpg", "rb") as fh:
+        contents = fh.read()
+    verified = gpg.verify(contents)
+    print(dir(verified))
+    print(verified.valid)
+    print(verified.key_id)
+    print(verified.status)
 
 
 main(name=__name__)
