@@ -14,7 +14,7 @@ log = logging.getLogger(__name__)
 # Constants {{{1
 GPG = '/usr/local/bin/gpg'
 MY_EMAIL = "scriptworker@example.com"
-KEYS_TO_TRUST = ('decision.root@example.com', 'build.root@example.com', 'docker.root@example.com')
+TRUSTED_EMAILS = ('decision.root@example.com', 'build.root@example.com', 'docker.root@example.com')
 KEY_DATA = (
     # Root keys.  These sign the embedded keys.  We trust the root keys, and
     # the signature makes the embedded keys valid.
@@ -40,13 +40,25 @@ KEY_DATA = (
 def write_key(gpg, keyid, path):
     """ Write the pub and sec keys for keyid to path.pub and path.sec
     """
-    log.info("Writing keys to %s.{pub,sec}" % path)
     ascii_armored_public_key = gpg.export_keys(keyid)
     with open("{}.pub".format(path), "w") as fh:
         print(ascii_armored_public_key, file=fh)
     ascii_armored_private_key = gpg.export_keys(keyid, True)
     with open("{}.sec".format(path), "w") as fh:
         print(ascii_armored_private_key, file=fh)
+
+
+# write_keys {{{1
+def write_keys(gpg, tmpdir, fingerprints):
+    """ Write ascii armored keys to tmpdir/keys
+    """
+    keydir = os.path.join(tmpdir, "keys")
+    log.info("Writing keys...")
+    os.makedirs(keydir)
+    for key in gpg.list_keys():
+        email = fingerprints[key['fingerprint']]
+        path = os.path.join(keydir, email)
+        write_key(gpg, key['keyid'], path)
 
 
 # generate_keys {{{1
@@ -63,8 +75,18 @@ def generate_keys(gpg):
     return fingerprints
 
 
+# create_gpg_conf {{{1
+def create_gpg_conf(tmpdir, emails):
+    """ Use my key by default
+    """
+    with open(os.path.join(tmpdir, "gpg.conf"), "w") as fh:
+        print("default-key {}".format(emails[MY_EMAIL]), file=fh)
+
+
 # update_trust {{{1
 def update_trust(gpg_path, gpg_home, emails):
+    """ Trust my key ultimately; TRUSTED_EMAILS fully
+    """
     log.info("Updating ownertrust...")
     ownertrust = []
     trustdb = os.path.join(gpg_home, "trustdb.gpg")
@@ -72,10 +94,10 @@ def update_trust(gpg_path, gpg_home, emails):
         os.remove(trustdb)
     # trust MY_EMAIL ultimately
     ownertrust.append("{}:6\n".format(emails[MY_EMAIL]))
-    for email in KEYS_TO_TRUST:
+    for email in TRUSTED_EMAILS:
         ownertrust.append("{}:5\n".format(emails[email]))
+    log.debug(pprint.pformat(ownertrust))
     ownertrust = ''.join(ownertrust).encode('utf-8')
-    print(ownertrust)
     cmd = [
         gpg_path,
         "--homedir", gpg_home,
@@ -86,10 +108,11 @@ def update_trust(gpg_path, gpg_home, emails):
     ]
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.STDOUT)
     stdout = p.communicate(input=ownertrust)[0]
-    if stdout:
-        log.info("gpg output:\n{}".format(stdout))
-    assert not p.returncode
-    print(subprocess.check_output(
+    if p.returncode:
+        if stdout:
+            log.critical("gpg output:\n{}".format(stdout.decode('utf-8')))
+        sys.exit(p.returncode)
+    log.debug(subprocess.check_output(
     [
         gpg_path,
         "--homedir", gpg_home,
@@ -97,7 +120,7 @@ def update_trust(gpg_path, gpg_home, emails):
         "--secret-keyring", os.path.join(gpg_home, "secring.gpg"),
         "--keyring", os.path.join(gpg_home, "pubring.gpg"),
         "--export-ownertrust"
-    ]))
+    ]).decode('utf-8'))
 
 
 # main {{{1
@@ -111,11 +134,9 @@ def main(name=None):
         gpg.encoding = 'utf-8'
         fingerprints = generate_keys(gpg)
         emails = {v: k for k, v in fingerprints.items()}
+        create_gpg_conf(tmpdir, emails)
         update_trust(GPG, tmpdir, emails)
-        for key in gpg.list_keys():
-            email = fingerprints[key['fingerprint']]
-            path = os.path.join(tmpdir, email)
-            write_key(gpg, key['keyid'], path)
+        write_keys(gpg, tmpdir, fingerprints)
         # TODO tests!
     finally:
         log.info("Files are in {}".format(tmpdir))
