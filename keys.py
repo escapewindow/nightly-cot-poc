@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 """ Quick and dirty test gpg key generation script, for scriptworker testing
+Written against homebrew gpg 2.0.3.0 and libgcrypt 1.7.1 on osx 10.11.6
 """
 # TODO:
 #  _ verify that gpg.conf actually makes my key default
