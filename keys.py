@@ -1,6 +1,19 @@
 #!/usr/bin/env python
 """ Quick and dirty test gpg key generation script, for scriptworker testing
 """
+# TODO:
+#  _ verify that gpg.conf actually makes my key default
+#  _ sign the trusted keys with my key
+#  _ sign the embedded keys with the appropriate trusted key
+#  _ verify the exported keys have the signatures still
+#  _ verify trust! sign something with each key. everything should be a valid
+#    signature except the unknown key
+#  _ verify trust without private keys imported: create a new gpg home with
+#    only the appropriate pubkeys to verify
+#  _ cmdln args?  delete tmpdir, where to write the keys, verbosity, location of gpg binary
+#  _ tests for version of gpg; docs for same
+#  _ should we even use python-gnupg or just wrap gpg for everything in this script?
+#  _ library reusability?
 import gnupg
 import logging
 import os
@@ -36,18 +49,6 @@ KEY_DATA = (
 )
 
 
-# write_key {{{1
-def write_key(gpg, keyid, path):
-    """ Write the pub and sec keys for keyid to path.pub and path.sec
-    """
-    ascii_armored_public_key = gpg.export_keys(keyid)
-    with open("{}.pub".format(path), "w") as fh:
-        print(ascii_armored_public_key, file=fh)
-    ascii_armored_private_key = gpg.export_keys(keyid, True)
-    with open("{}.sec".format(path), "w") as fh:
-        print(ascii_armored_private_key, file=fh)
-
-
 # write_keys {{{1
 def write_keys(gpg, tmpdir, fingerprints):
     """ Write ascii armored keys to tmpdir/keys
@@ -57,8 +58,14 @@ def write_keys(gpg, tmpdir, fingerprints):
     os.makedirs(keydir)
     for key in gpg.list_keys():
         email = fingerprints[key['fingerprint']]
+        keyid = key['keyid']
         path = os.path.join(keydir, email)
-        write_key(gpg, key['keyid'], path)
+        ascii_armored_public_key = gpg.export_keys(keyid)
+        with open("{}.pub".format(path), "w") as fh:
+            print(ascii_armored_public_key, file=fh)
+        ascii_armored_private_key = gpg.export_keys(keyid, True)
+        with open("{}.sec".format(path), "w") as fh:
+            print(ascii_armored_private_key, file=fh)
 
 
 # generate_keys {{{1
@@ -94,6 +101,8 @@ def update_trust(gpg_path, gpg_home, emails):
         os.remove(trustdb)
     # trust MY_EMAIL ultimately
     ownertrust.append("{}:6\n".format(emails[MY_EMAIL]))
+    # Trust TRUSTED_EMAILS fully.  That means they will need to be signed
+    # by my key, and then any key they sign will be valid.
     for email in TRUSTED_EMAILS:
         ownertrust.append("{}:5\n".format(emails[email]))
     log.debug(pprint.pformat(ownertrust))
@@ -123,22 +132,30 @@ def update_trust(gpg_path, gpg_home, emails):
     ]).decode('utf-8'))
 
 
+# sign_keys {{{1
+def sign_keys(gpg_path, emails):
+    """
+    """
+    pass
+
+
 # main {{{1
 def main(name=None):
     log.setLevel(logging.INFO)
     log.addHandler(logging.StreamHandler())
     tmpdir = tempfile.mkdtemp()
-    #with tempfile.TemporaryDirectory() as tmpdir:
     try:
         gpg = gnupg.GPG(gnupghome=tmpdir)
         gpg.encoding = 'utf-8'
-        fingerprints = generate_keys(gpg)
-        emails = {v: k for k, v in fingerprints.items()}
-        create_gpg_conf(tmpdir, emails)
-        update_trust(GPG, tmpdir, emails)
-        write_keys(gpg, tmpdir, fingerprints)
+        fingerprints_dict = generate_keys(gpg)
+        emails_dict = {v: k for k, v in fingerprints_dict.items()}
+        create_gpg_conf(tmpdir, emails_dict)
+        update_trust(GPG, tmpdir, emails_dict)
+        sign_keys(GPG, emails_dict)
+        write_keys(gpg, tmpdir, fingerprints_dict)
         # TODO tests!
     finally:
+        # remove tmpdir?
         log.info("Files are in {}".format(tmpdir))
 
 
