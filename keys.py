@@ -1,9 +1,10 @@
 #!/usr/bin/env python
 """ Quick and dirty test gpg key generation script, for scriptworker testing
-Written against homebrew gpg 2.0.3.0 and libgcrypt 1.7.1 on osx 10.11.6
+Written against homebrew gpg 2.0.30 and libgcrypt 1.7.3 on osx 10.11.6
 """
 # TODO:
-#  _ verify that gpg.conf actually makes my key default
+#  X verify that gpg.conf actually makes my key default -- signature with no key specified
+#    used the default key
 #  _ sign the trusted keys with my key
 #  _ sign the embedded keys with the appropriate trusted key
 #  _ verify the exported keys have the signatures still
@@ -155,6 +156,7 @@ def main(name=None):
         sign_keys(GPG, emails_dict)
         write_keys(gpg, tmpdir, fingerprints_dict)
         # TODO tests!
+        print(gpg.sign("foo"))
     finally:
         # remove tmpdir?
         log.info("Files are in {}".format(tmpdir))
