@@ -19,9 +19,10 @@ Written against homebrew gpg 2.0.30 and libgcrypt 1.7.3 on osx 10.11.6
 import gnupg
 import logging
 import os
-# import pexpect
+import pexpect
 import pprint
 import subprocess
+import sys
 import tempfile
 
 log = logging.getLogger(__name__)
@@ -48,6 +49,11 @@ KEY_DATA = (
 
     # This is an orphaned, untrusted key.  Could also be evil.com.
     ("Invalid key", "Some random key", "unknown@example.com"),
+)
+TEST_DATA = (
+    ("decision@example.com", "decision.root@example.com"),
+    ("build@example.com", "build.root@example.com"),
+    ("docker@example.com", "docker.root@example.com"),
 )
 
 
@@ -92,6 +98,16 @@ def create_gpg_conf(tmpdir, emails):
         print("default-key {}".format(emails[MY_EMAIL]), file=fh)
 
 
+# gpg_default_args {{{1
+def gpg_default_args(gpg_home):
+    return [
+        "--homedir", gpg_home,
+        "--no-default-keyring",
+        "--secret-keyring", os.path.join(gpg_home, "secring.gpg"),
+        "--keyring", os.path.join(gpg_home, "pubring.gpg"),
+    ]
+
+
 # update_trust {{{1
 def update_trust(gpg_path, gpg_home, emails):
     """ Trust my key ultimately; TRUSTED_EMAILS fully
@@ -109,14 +125,7 @@ def update_trust(gpg_path, gpg_home, emails):
         ownertrust.append("{}:5\n".format(emails[email]))
     log.debug(pprint.pformat(ownertrust))
     ownertrust = ''.join(ownertrust).encode('utf-8')
-    cmd = [
-        gpg_path,
-        "--homedir", gpg_home,
-        "--no-default-keyring",
-        "--secret-keyring", os.path.join(gpg_home, "secring.gpg"),
-        "--keyring", os.path.join(gpg_home, "pubring.gpg"),
-        "--import-ownertrust"
-    ]
+    cmd = [gpg_path] + gpg_default_args(gpg_home) + ["--import-ownertrust"]
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.STDOUT)
     stdout = p.communicate(input=ownertrust)[0]
     if p.returncode:
@@ -124,21 +133,36 @@ def update_trust(gpg_path, gpg_home, emails):
             log.critical("gpg output:\n{}".format(stdout.decode('utf-8')))
         sys.exit(p.returncode)
     log.debug(subprocess.check_output(
-    [
-        gpg_path,
-        "--homedir", gpg_home,
-        "--no-default-keyring",
-        "--secret-keyring", os.path.join(gpg_home, "secring.gpg"),
-        "--keyring", os.path.join(gpg_home, "pubring.gpg"),
-        "--export-ownertrust"
-    ]).decode('utf-8'))
+        [gpg_path] + gpg_default_args(gpg_home) + ["--export-ownertrust"]).decode('utf-8')
+    )
 
 
 # sign_keys {{{1
-def sign_keys(gpg_path, emails):
+def sign_keys(gpg_path, gpg_home, emails, exportable=False):
+    """Sign the keys marked by 'emails'.
     """
-    """
-    pass
+    if exportable:
+        first_arg = "--sign-key"
+    else:
+        first_arg = "--lsign-key"
+    for email in emails:
+        cmd_args = gpg_default_args(gpg_home) + [first_arg, email]
+        log.info("{} {}".format(gpg_path, cmd_args))
+        child = pexpect.spawn(gpg_path, cmd_args)
+        child.expect(b".*Really sign\? \(y/N\) ")
+        child.sendline(b'y')
+        child.interact()
+        child.close()
+        if child.exitstatus != 0 or child.signalstatus is not None:
+            raise Exception("Failed signing {}! exit {} signal {}".format(email, child.exitstatus, child.signalstatus))
+
+
+# sign_message {{{1
+def sign_message(gpg, key, message, path):
+    with open(path, "w") as fh:
+        signed = gpg.sign(message, keyid=key)
+        print(signed, file=fh)
+        return path
 
 
 # main {{{1
@@ -153,13 +177,25 @@ def main(name=None):
         emails_dict = {v: k for k, v in fingerprints_dict.items()}
         create_gpg_conf(tmpdir, emails_dict)
         update_trust(GPG, tmpdir, emails_dict)
-        sign_keys(GPG, emails_dict)
+        sign_keys(GPG, tmpdir, TRUSTED_EMAILS)
         write_keys(gpg, tmpdir, fingerprints_dict)
-        # TODO tests!
-        print(gpg.sign("foo"))
+        for num, val in enumerate(TEST_DATA):
+            log.info("Signing with {}".format(val[0]))
+            signed = sign_message(gpg, val[0], str(num), os.path.join(tmpdir, "{}.gpg".format(str(num))))
+            log.info("verifying...")
+            with open(signed, "rb") as fh:
+                verified = gpg.verify_file(fh)
+            print(verified.trust_text)
+            print(verified.username)
+            print(verified.key_id)
+            print(verified.signature_id)
+#            for prop in ('username', 'key_id', 'signature_id', 'fingerprint', 'trust_level', 'trust_text'):
+#                log.info(verified.getattr(prop))
     finally:
         # remove tmpdir?
         log.info("Files are in {}".format(tmpdir))
+        import shutil
+        shutil.rmtree(tmpdir)
 
 
 main()
