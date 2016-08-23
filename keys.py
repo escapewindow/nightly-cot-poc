@@ -50,7 +50,7 @@ KEY_DATA = (
     # This is an orphaned, untrusted key.  Could also be evil.com.
     ("Invalid key", "Some random key", "unknown@example.com"),
 )
-TEST_DATA = (
+SUBKEY_DATA = (
     ("decision@example.com", "decision.root@example.com"),
     ("build@example.com", "build.root@example.com"),
     ("docker@example.com", "docker.root@example.com"),
@@ -137,24 +137,37 @@ def update_trust(gpg_path, gpg_home, emails):
     )
 
 
-# sign_keys {{{1
-def sign_keys(gpg_path, gpg_home, emails, exportable=False):
+# sign_key {{{1
+def sign_key(gpg_path, gpg_home, email, signing_key=None, exportable=False):
     """Sign the keys marked by 'emails'.
     """
-    if exportable:
-        first_arg = "--sign-key"
+    args = []
+    if signing_key:
+        args.extend(['-u', signing_key])
+        log.info("Signing {} with {}...".format(email, signing_key))
     else:
-        first_arg = "--lsign-key"
-    for email in emails:
-        cmd_args = gpg_default_args(gpg_home) + [first_arg, email]
-        log.info("{} {}".format(gpg_path, cmd_args))
-        child = pexpect.spawn(gpg_path, cmd_args)
-        child.expect(b".*Really sign\? \(y/N\) ")
-        child.sendline(b'y')
-        child.interact()
-        child.close()
-        if child.exitstatus != 0 or child.signalstatus is not None:
-            raise Exception("Failed signing {}! exit {} signal {}".format(email, child.exitstatus, child.signalstatus))
+        log.info("Signing {}...".format(email))
+    if exportable:
+        args.append("--sign-key")
+    else:
+        args.append("--lsign-key")
+    args.append(email)
+    cmd_args = gpg_default_args(gpg_home) + args
+    log.info("{} {}".format(gpg_path, cmd_args))
+    child = pexpect.spawn(gpg_path, cmd_args)
+    child.expect(b".*Really sign\? \(y/N\) ")
+    child.sendline(b'y')
+    child.interact()
+    child.close()
+    if child.exitstatus != 0 or child.signalstatus is not None:
+        raise Exception("Failed signing {}! exit {} signal {}".format(email, child.exitstatus, child.signalstatus))
+
+
+def sign_keys(gpg_path, gpg_home, trusted_emails, subkey_data):
+    for email in trusted_emails:
+        sign_key(gpg_path, gpg_home, email)
+    for params in subkey_data:
+        sign_key(gpg_path, gpg_home, params[0], signing_key=params[1])
 
 
 # sign_message {{{1
@@ -177,9 +190,9 @@ def main(name=None):
         emails_dict = {v: k for k, v in fingerprints_dict.items()}
         create_gpg_conf(tmpdir, emails_dict)
         update_trust(GPG, tmpdir, emails_dict)
-        sign_keys(GPG, tmpdir, TRUSTED_EMAILS)
+        sign_keys(GPG, tmpdir, TRUSTED_EMAILS, SUBKEY_DATA)
         write_keys(gpg, tmpdir, fingerprints_dict)
-        for num, val in enumerate(TEST_DATA):
+        for num, val in enumerate(SUBKEY_DATA):
             log.info("Signing with {}".format(val[0]))
             signed = sign_message(gpg, val[0], str(num), os.path.join(tmpdir, "{}.gpg".format(str(num))))
             log.info("verifying...")
