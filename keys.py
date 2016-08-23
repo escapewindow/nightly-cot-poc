@@ -153,14 +153,17 @@ def sign_key(gpg_path, gpg_home, email, signing_key=None, exportable=False):
         args.append("--lsign-key")
     args.append(email)
     cmd_args = gpg_default_args(gpg_home) + args
-    log.info("{} {}".format(gpg_path, cmd_args))
     child = pexpect.spawn(gpg_path, cmd_args)
     child.expect(b".*Really sign\? \(y/N\) ")
     child.sendline(b'y')
-    child.interact()
-    child.close()
-    if child.exitstatus != 0 or child.signalstatus is not None:
-        raise Exception("Failed signing {}! exit {} signal {}".format(email, child.exitstatus, child.signalstatus))
+    #child.interact()
+    i = child.expect([pexpect.EOF, pexpect.TIMEOUT])
+    if i != 0:
+        raise Exception("Failed signing {}! Timeout".format(email))
+    else:
+        child.close()
+        if child.exitstatus != 0 or child.signalstatus is not None:
+            raise Exception("Failed signing {}! exit {} signal {}".format(email, child.exitstatus, child.signalstatus))
 
 
 def sign_keys(gpg_path, gpg_home, trusted_emails, subkey_data):
@@ -202,8 +205,6 @@ def main(name=None):
             print(verified.username)
             print(verified.key_id)
             print(verified.signature_id)
-#            for prop in ('username', 'key_id', 'signature_id', 'fingerprint', 'trust_level', 'trust_text'):
-#                log.info(verified.getattr(prop))
     finally:
         # remove tmpdir?
         log.info("Files are in {}".format(tmpdir))
