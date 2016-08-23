@@ -166,6 +166,7 @@ def sign_key(gpg_path, gpg_home, email, signing_key=None, exportable=False):
             raise Exception("Failed signing {}! exit {} signal {}".format(email, child.exitstatus, child.signalstatus))
 
 
+# sign_keys {{{1
 def sign_keys(gpg_path, gpg_home, trusted_emails, subkey_data):
     for email in trusted_emails:
         sign_key(gpg_path, gpg_home, email)
@@ -203,13 +204,15 @@ def main(name=None):
                 verified = gpg.verify_file(fh)
             print(verified.trust_text)
             print(verified.username)
-            print(verified.key_id)
-            print(verified.signature_id)
+#            print(verified.key_id)
+#            print(verified.signature_id)
+            # TODO --list-sigs or --check-sigs, then parse the text output for meaning :( :( :(
+            # give up on verifying which signature path for now?
     finally:
         # remove tmpdir?
         log.info("Files are in {}".format(tmpdir))
-        import shutil
-        shutil.rmtree(tmpdir)
+#        import shutil
+#        shutil.rmtree(tmpdir)
 
 
 main()
