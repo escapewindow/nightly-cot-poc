@@ -204,6 +204,8 @@ def main(name=None):
                 verified = gpg.verify_file(fh)
             print(verified.trust_text)
             print(verified.username)
+            cmd = [GPG] + gpg_default_args(tmpdir) + ["-v", os.path.join(tmpdir, "{}.gpg".format(str(num)))]
+            subprocess.check_call(cmd)
 #            print(verified.key_id)
 #            print(verified.signature_id)
             # TODO --list-sigs or --check-sigs, then parse the text output for meaning :( :( :(
