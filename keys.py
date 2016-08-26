@@ -30,29 +30,23 @@ log = logging.getLogger(__name__)
 # Constants {{{1
 GPG = '/usr/local/bin/gpg'
 MY_EMAIL = "scriptworker@example.com"
-TRUSTED_EMAILS = ('decision.root@example.com', 'build.root@example.com', 'docker.root@example.com')
+TRUSTED_EMAILS = ("docker.root@example.com", )
 KEY_DATA = (
     # Root keys.  These sign the embedded keys.  We trust the root keys, and
     # the signature makes the embedded keys valid.
-    ("Decision Root", "root key for the decision task keys", "decision.root@example.com"),
-    ("Build Root", "root key for the build task keys", "build.root@example.com"),
     ("Docker Root", "root key for the docker task keys", "docker.root@example.com"),
 
     # Embedded keys.  These represent the keys that are baked into the
     # worker AMIs.
-    ("Decision Embedded", "embedded key for the decision ami", "decision@example.com"),
-    ("Build Embedded", "embedded key for the build ami", "build@example.com"),
     ("Docker Embedded", "embedded key for the docker ami", "docker@example.com"),
 
     # This is the key scriptworker will use to sign its own CoT.
-    ("Scriptworker Local", "embedded key for the scriptworker", "scriptworker@example.com"),
+    ("Scriptworker Test", "test key for scriptworker", "scriptworker@example.com"),
 
     # This is an orphaned, untrusted key.  Could also be evil.com.
     ("Invalid key", "Some random key", "unknown@example.com"),
 )
 SUBKEY_DATA = (
-    ("decision@example.com", "decision.root@example.com"),
-    ("build@example.com", "build.root@example.com"),
     ("docker@example.com", "docker.root@example.com"),
 )
 
