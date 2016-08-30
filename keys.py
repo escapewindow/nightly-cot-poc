@@ -5,17 +5,17 @@ Written against homebrew gpg 2.0.30 and libgcrypt 1.7.3 on osx 10.11.6
 # TODO:
 #  X verify that gpg.conf actually makes my key default -- signature with no key specified
 #    used the default key
-#  _ sign the trusted keys with my key
-#  _ sign the embedded keys with the appropriate trusted key
+#  X sign the trusted keys with my key
+#  X sign the embedded keys with the appropriate trusted key
 #  _ verify the exported keys have the signatures still
-#  _ verify trust! sign something with each key. everything should be a valid
+#  X verify trust! sign something with each key. everything should be a valid
 #    signature except the unknown key
 #  _ verify trust without private keys imported: create a new gpg home with
 #    only the appropriate pubkeys to verify
 #  _ cmdln args?  delete tmpdir, where to write the keys, verbosity, location of gpg binary
 #  _ tests for version of gpg; docs for same
-#  _ should we even use python-gnupg or just wrap gpg for everything in this script?
 #  _ library reusability?
+#  _ new pub keyrings per git dir
 import gnupg
 import logging
 import os
@@ -71,12 +71,12 @@ def write_keys(gpg, tmpdir, fingerprints):
 
 
 # generate_keys {{{1
-def generate_keys(gpg):
+def generate_keys(gpg, key_data):
     """ Generate the gpg keys from KEY_DATA
     """
     log.info("Generating keys...")
     fingerprints = {}
-    for key_tuple in KEY_DATA:
+    for key_tuple in key_data:
         k = dict(zip(("name_real", "name_comment", "name_email"), key_tuple))
         k['key_length'] = 2048
         key = gpg.gen_key(gpg.gen_key_input(**k))
@@ -103,19 +103,19 @@ def gpg_default_args(gpg_home):
 
 
 # update_trust {{{1
-def update_trust(gpg_path, gpg_home, emails):
-    """ Trust my key ultimately; TRUSTED_EMAILS fully
+def update_trust(gpg_path, gpg_home, emails, my_fingerprint, trusted_fingerprints):
+    """ Trust my key ultimately; trusted_fingerprints fully
     """
     log.info("Updating ownertrust...")
     ownertrust = []
     trustdb = os.path.join(gpg_home, "trustdb.gpg")
     if os.path.exists(trustdb):
         os.remove(trustdb)
-    # trust MY_EMAIL ultimately
-    ownertrust.append("{}:6\n".format(emails[MY_EMAIL]))
-    # Trust TRUSTED_EMAILS fully.  That means they will need to be signed
+    # trust my_fingerprint ultimately
+    ownertrust.append("{}:6\n".format(my_fingerprint)
+    # Trust trusted_fingerprints fully.  That means they will need to be signed
     # by my key, and then any key they sign will be valid.
-    for email in TRUSTED_EMAILS:
+    for fingerprint in trusted_fingerprints:
         ownertrust.append("{}:5\n".format(emails[email]))
     log.debug(pprint.pformat(ownertrust))
     ownertrust = ''.join(ownertrust).encode('utf-8')
@@ -132,7 +132,7 @@ def update_trust(gpg_path, gpg_home, emails):
 
 
 # sign_key {{{1
-def sign_key(gpg_path, gpg_home, email, signing_key=None, exportable=False):
+def sign_key(gpg_path, gpg_home, email, signing_key=None):
     """Sign the keys marked by 'emails'.
     """
     args = []
@@ -141,16 +141,12 @@ def sign_key(gpg_path, gpg_home, email, signing_key=None, exportable=False):
         log.info("Signing {} with {}...".format(email, signing_key))
     else:
         log.info("Signing {}...".format(email))
-    if exportable:
-        args.append("--sign-key")
-    else:
-        args.append("--lsign-key")
+    args.append("--lsign-key")
     args.append(email)
     cmd_args = gpg_default_args(gpg_home) + args
     child = pexpect.spawn(gpg_path, cmd_args)
     child.expect(b".*Really sign\? \(y/N\) ")
     child.sendline(b'y')
-    #child.interact()
     i = child.expect([pexpect.EOF, pexpect.TIMEOUT])
     if i != 0:
         raise Exception("Failed signing {}! Timeout".format(email))
@@ -184,10 +180,11 @@ def main(name=None):
     try:
         gpg = gnupg.GPG(gnupghome=tmpdir)
         gpg.encoding = 'utf-8'
-        fingerprints_dict = generate_keys(gpg)
+        fingerprints_dict = generate_keys(gpg, KEY_DATA)
         emails_dict = {v: k for k, v in fingerprints_dict.items()}
         create_gpg_conf(tmpdir, emails_dict)
-        update_trust(GPG, tmpdir, emails_dict)
+        update_trust(GPG, tmpdir, emails_dict, emails[MY_EMAIL],
+                     [emails[email] for email in TRUSTED_EMAILS])
         sign_keys(GPG, tmpdir, TRUSTED_EMAILS, SUBKEY_DATA)
         write_keys(gpg, tmpdir, fingerprints_dict)
         for num, val in enumerate(SUBKEY_DATA):
