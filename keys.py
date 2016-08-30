@@ -78,7 +78,7 @@ def generate_keys(gpg, key_data):
     fingerprints = {}
     for key_tuple in key_data:
         k = dict(zip(("name_real", "name_comment", "name_email"), key_tuple))
-        k['key_length'] = 2048
+        k['key_length'] = 4096
         key = gpg.gen_key(gpg.gen_key_input(**k))
         fingerprints[key.fingerprint] = k['name_email']
     return fingerprints
@@ -86,9 +86,15 @@ def generate_keys(gpg, key_data):
 
 # create_gpg_conf {{{1
 def create_gpg_conf(tmpdir, emails):
-    """ Use my key by default
+    """ set sec team guidelines; use my key by default
     """
     with open(os.path.join(tmpdir, "gpg.conf"), "w") as fh:
+        # https://wiki.mozilla.org/Security/Guidelines/Key_Management#GnuPG_settings
+        print("personal-digest-preferences SHA512 SHA384\n"
+              "cert-digest-algo SHA256\n"
+              "default-preference-list SHA512 SHA384 AES256 ZLIB BZIP2 ZIP Uncompressed\n"
+              "keyid-format 0xlong\n", file=fh)
+        # default key
         print("default-key {}".format(emails[MY_EMAIL]), file=fh)
 
 
@@ -112,11 +118,11 @@ def update_trust(gpg_path, gpg_home, emails, my_fingerprint, trusted_fingerprint
     if os.path.exists(trustdb):
         os.remove(trustdb)
     # trust my_fingerprint ultimately
-    ownertrust.append("{}:6\n".format(my_fingerprint)
+    ownertrust.append("{}:6\n".format(my_fingerprint))
     # Trust trusted_fingerprints fully.  That means they will need to be signed
     # by my key, and then any key they sign will be valid.
     for fingerprint in trusted_fingerprints:
-        ownertrust.append("{}:5\n".format(emails[email]))
+        ownertrust.append("{}:5\n".format(fingerprint))
     log.debug(pprint.pformat(ownertrust))
     ownertrust = ''.join(ownertrust).encode('utf-8')
     cmd = [gpg_path] + gpg_default_args(gpg_home) + ["--import-ownertrust"]
@@ -183,8 +189,8 @@ def main(name=None):
         fingerprints_dict = generate_keys(gpg, KEY_DATA)
         emails_dict = {v: k for k, v in fingerprints_dict.items()}
         create_gpg_conf(tmpdir, emails_dict)
-        update_trust(GPG, tmpdir, emails_dict, emails[MY_EMAIL],
-                     [emails[email] for email in TRUSTED_EMAILS])
+        update_trust(GPG, tmpdir, emails_dict, emails_dict[MY_EMAIL],
+                     [emails_dict[email] for email in TRUSTED_EMAILS])
         sign_keys(GPG, tmpdir, TRUSTED_EMAILS, SUBKEY_DATA)
         write_keys(gpg, tmpdir, fingerprints_dict)
         for num, val in enumerate(SUBKEY_DATA):
