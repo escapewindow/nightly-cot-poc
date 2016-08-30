@@ -32,13 +32,15 @@ GPG = '/usr/local/bin/gpg'
 MY_EMAIL = "scriptworker@example.com"
 TRUSTED_EMAILS = ("docker.root@example.com", )
 KEY_DATA = (
+    # Format: (name, comment, email, [expire])
+
     # Root keys.  These sign the embedded keys.  We trust the root keys, and
     # the signature makes the embedded keys valid.
     ("Docker Root", "root key for the docker task keys", "docker.root@example.com"),
 
     # Embedded keys.  These represent the keys that are baked into the
     # worker AMIs.
-    ("Docker Embedded", "embedded key for the docker ami", "docker@example.com"),
+    ("Docker Embedded", "embedded key for the docker ami", "docker@example.com", "1d"),
 
     # This is the key scriptworker will use to sign its own CoT.
     ("Scriptworker Test", "test key for scriptworker", "scriptworker@example.com"),
@@ -77,8 +79,8 @@ def generate_keys(gpg, key_data):
     log.info("Generating keys...")
     fingerprints = {}
     for key_tuple in key_data:
-        k = dict(zip(("name_real", "name_comment", "name_email"), key_tuple))
-        k['key_length'] = 4096
+        k = dict(zip(("name_real", "name_comment", "name_email", "expire_date"), key_tuple))
+        k.setdefault('key_length', 4096)
         key = gpg.gen_key(gpg.gen_key_input(**k))
         fingerprints[key.fingerprint] = k['name_email']
     return fingerprints
