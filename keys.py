@@ -87,7 +87,7 @@ def generate_keys(gpg, key_data):
 
 
 # create_gpg_conf {{{1
-def create_gpg_conf(tmpdir, emails):
+def create_gpg_conf(tmpdir, my_fingerprint):
     """ set sec team guidelines; use my key by default
     """
     with open(os.path.join(tmpdir, "gpg.conf"), "w") as fh:
@@ -97,7 +97,7 @@ def create_gpg_conf(tmpdir, emails):
               "default-preference-list SHA512 SHA384 AES256 ZLIB BZIP2 ZIP Uncompressed\n"
               "keyid-format 0xlong\n", file=fh)
         # default key
-        print("default-key {}".format(emails[MY_EMAIL]), file=fh)
+        print("default-key {}".format(my_fingerprint), file=fh)
 
 
 # gpg_default_args {{{1
@@ -190,7 +190,7 @@ def main(name=None):
         gpg.encoding = 'utf-8'
         fingerprints_dict = generate_keys(gpg, KEY_DATA)
         emails_dict = {v: k for k, v in fingerprints_dict.items()}
-        create_gpg_conf(tmpdir, emails_dict)
+        create_gpg_conf(tmpdir, emails_dict[MY_EMAIL])
         update_trust(GPG, tmpdir, emails_dict, emails_dict[MY_EMAIL],
                      [emails_dict[email] for email in TRUSTED_EMAILS])
         sign_keys(GPG, tmpdir, TRUSTED_EMAILS, SUBKEY_DATA)
